@@ -1,0 +1,2 @@
+# No third-party dependencies are required for the CGI port.
+# Python 3.11+ standard library is enough.

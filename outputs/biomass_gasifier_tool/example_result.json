@@ -1,0 +1,178 @@
+{
+  "input_normalized": {
+    "mass_flow_kg_h": 100.0,
+    "mass_basis": "dry",
+    "dry_mass_flow_kg_h": 100.0,
+    "moisture_mass_flow_kg_h": 10.0,
+    "moisture_pct": 10.0,
+    "C_pct_dry": 50.0,
+    "H_pct_dry": 6.0,
+    "O_pct_dry": 42.0,
+    "N_pct_dry": 1.0,
+    "S_pct_dry": 0.1,
+    "Cl_pct_dry": 0.05,
+    "ash_pct_dry": 0.85,
+    "cellulose_pct_dry": 40.0,
+    "hemicellulose_pct_dry": 25.0,
+    "lignin_pct_dry": 25.0,
+    "extractives_pct_dry": 10.0,
+    "lhv_mj_kg_dry": null,
+    "hhv_mj_kg_dry": null
+  },
+  "operating_conditions": {
+    "temperature_c": 850.0,
+    "pressure_bar": 1.0,
+    "residence_time_s": 2.0,
+    "agent": "air",
+    "model": "semi_empirical",
+    "steam_biomass_ratio": 0.0
+  },
+  "oxidant": {
+    "o2_stoich_kmol_h": 4.341483073481907,
+    "o2_in_kmol_h": 1.302444922044572,
+    "n2_in_kmol_h": 4.89719290688759,
+    "air_in_kmol_h": 6.199637828932162,
+    "air_in_kg_h": 178.8655947091312,
+    "er": 0.3,
+    "steam_in_kg_h": 0.0
+  },
+  "yields": {
+    "char_kg_h": 10.100000000000001,
+    "char_pct_dry_feed": 10.100000000000001,
+    "tar_cnhm_kg_h": 1.8155711431188082,
+    "tar_pct_dry_feed": 1.8155711431188082,
+    "tar_formula": "C6H6 pseudo-tar"
+  },
+  "gas": {
+    "species_kmol_h": {
+      "CO": 1.6967188083061235,
+      "CO2": 1.2324033644746704,
+      "H2": 1.2709874540912711,
+      "CH4": 0.22161225251345285,
+      "C2H4": 0.034154729258110285,
+      "C2H6": 0.01643204485966227,
+      "H2O": 1.6212563517682455,
+      "N2": 4.930370195794158,
+      "H2S": 0.002079434393844874,
+      "SO2": 0.0010397171969224372,
+      "HCl": 0.0012458862247296662,
+      "Cl2": 8.227550540667609e-05,
+      "NH3": 0.003399660713860758,
+      "HCN": 0.001359864285544303,
+      "NO": 0.00016998303569303784,
+      "NO2": 4.079592856632908e-05,
+      "N2O": 3.399660713860757e-05
+    },
+    "dry_flow_nm3_h": 210.96349220192172,
+    "wet_flow_nm3_h": 247.30233207045518,
+    "dry_composition_mol_pct": {
+      "CO": 18.026936780593847,
+      "CO2": 13.093776900932264,
+      "H2": 13.503716922136848,
+      "CH4": 2.354538681546951,
+      "C2H4": 0.3628798962327333,
+      "C2H6": 0.17458369201243015,
+      "N2": 52.383147631419234,
+      "H2S": 0.022093131857633536,
+      "SO2": 0.011046565928816771,
+      "HCl": 0.013237026724207955,
+      "Cl2": 0.000874143274240148,
+      "NH3": 0.03611999140000059,
+      "HCN": 0.014447996560000233,
+      "NO": 0.0018059995700000287,
+      "NO2": 0.00043343989680000685,
+      "N2O": 0.00036119991400000576
+    },
+    "wet_composition_mol_pct": {
+      "CO": 15.378041545737965,
+      "CO2": 11.16976487042006,
+      "H2": 11.519467915039996,
+      "CH4": 2.0085605284229175,
+      "C2H4": 0.3095579791674526,
+      "C2H6": 0.14893019827226744,
+      "H2O": 14.694095103875004,
+      "N2": 44.68591810005525,
+      "H2S": 0.018846746051048358,
+      "SO2": 0.009423373025524182,
+      "HCl": 0.011291965428427487,
+      "Cl2": 0.0007456958301791738,
+      "NH3": 0.03081248551217303,
+      "HCN": 0.01232499420486921,
+      "NO": 0.001540624275608651,
+      "NO2": 0.0003697498261460762,
+      "N2O": 0.00030812485512173016
+    },
+    "lhv_mj_nm3_dry": 4.903611925254834,
+    "cold_gas_efficiency_pct": 61.931188874040195
+  },
+  "balances": {
+    "mass": {
+      "ok": true,
+      "in_kg_h": 288.8655947091312,
+      "out_kg_h": 288.86559470913124,
+      "diff_kg_h": 5.684341886080802e-14,
+      "rel_error": 1.967815478961613e-16
+    },
+    "atomic": {
+      "ok": true,
+      "details": {
+        "C": {
+          "in_kmol_h": 4.162850720173175,
+          "out_kmol_h": 4.162850720173175,
+          "diff_kmol_h": 0.0,
+          "rel_error": 0.0
+        },
+        "H": {
+          "in_kmol_h": 7.062566908528607,
+          "out_kmol_h": 7.062566908528607,
+          "diff_kmol_h": 0.0,
+          "rel_error": 0.0
+        },
+        "O": {
+          "in_kmol_h": 5.785146894917519,
+          "out_kmol_h": 5.785146894917519,
+          "diff_kmol_h": 0.0,
+          "rel_error": 0.0
+        },
+        "N": {
+          "in_kmol_h": 9.865778688766257,
+          "out_kmol_h": 9.865778688766255,
+          "diff_kmol_h": -1.7763568394002505e-15,
+          "rel_error": -1.8005237046548718e-16
+        },
+        "S": {
+          "in_kmol_h": 0.003119151590767311,
+          "out_kmol_h": 0.0031191515907673115,
+          "diff_kmol_h": 4.336808689942018e-19,
+          "rel_error": 1.390380865995411e-16
+        },
+        "Cl": {
+          "in_kmol_h": 0.0014104372355430183,
+          "out_kmol_h": 0.0014104372355430183,
+          "diff_kmol_h": 0.0,
+          "rel_error": 0.0
+        }
+      }
+    }
+  },
+  "uncertainty": {
+    "char_yield_relative_range_pct": [
+      -30,
+      40
+    ],
+    "tar_yield_relative_range_pct": [
+      -50,
+      100
+    ],
+    "major_gas_species_absolute_mol_pct_range": [
+      -5,
+      5
+    ],
+    "note": "Screening uncertainty placeholders; replace with validation statistics for a specific reactor/feedstock."
+  },
+  "warnings": [
+    "Dioxin/furan qualitative risk: medium (index 0.45).",
+    "Dioxins/furans are reported only as a qualitative risk index; no absolute concentration is predicted.",
+    "Minor nitrogen/sulfur/chlorine species are screening estimates, not validated emission predictions."
+  ]
+}

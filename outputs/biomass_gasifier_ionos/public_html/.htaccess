@@ -1,0 +1,5 @@
+# Execute .cgi files through the CGI handler on IONOS Linux Web Hosting.
+AddHandler cgi-script .cgi
+
+DirectoryIndex index.html
+

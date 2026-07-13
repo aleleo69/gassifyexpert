@@ -1,0 +1,17 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+*.log
+
+# Runtime logs and counters
+outputs/biomass_gasifier_tool/logs/
+outputs/biomass_gasifier_ionos/public_html/logs/*.jsonl
+outputs/biomass_gasifier_ionos/public_html/logs/*.txt
+outputs/biomass_gasifier_ionos/public_html/logs/.tracker.lock
+
+# Generated deployment archives
+outputs/*.zip
+
+# Local virtual environments
+.venv/
+venv/
