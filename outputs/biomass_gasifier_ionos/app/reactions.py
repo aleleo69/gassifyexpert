@@ -78,6 +78,8 @@ def build_balanced_products(
     er: float,
     oxidant: dict[str, float],
     steam_kmol_h: float = 0.0,
+    cooling_residence_time_s: float = 2.0,
+    reduction_zone_severity: float = 0.75,
 ) -> ProductSlate:
     """Build a product slate that closes C/H/O/N/S/Cl atom balances.
 
@@ -102,7 +104,17 @@ def build_balanced_products(
     tar_kg = tar_kmol * (6.0 * ATOMIC_WEIGHTS["C"] + 6.0 * ATOMIC_WEIGHTS["H"])
     char_kg = char_c * ATOMIC_WEIGHTS["C"] + feedstock.ash_mass_flow_kg_h
 
-    pollutants = estimate_pollutants(feed_atoms, temperature_c, er, residual_carbon_factor=char_c / max(c_feed, 1e-12))
+    pollutants = estimate_pollutants(
+        feed_atoms,
+        temperature_c,
+        er,
+        residual_carbon_factor=char_c / max(c_feed, 1e-12),
+        cooling_residence_time_s=cooling_residence_time_s,
+        plastics_pct=feedstock.plastics_pct,
+        ps_pct=feedstock.ps_pct,
+        pvc_pct=feedstock.pvc_pct,
+        reduction_zone_severity=reduction_zone_severity,
+    )
     gas = {name: 0.0 for name in MOLECULAR_WEIGHTS}
     gas.update(pollutants.species_kmol_h)
 

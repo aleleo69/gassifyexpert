@@ -38,6 +38,9 @@ def semi_empirical_targets(
     c = coefficients or EMPIRICAL_COEFFICIENTS
     temp_delta = temperature_c - 750.0
     lignin = feedstock.lignin_pct / 100.0
+    plastics = feedstock.plastics_pct / 100.0
+    pe_pp = feedstock.pe_pp_pct / 100.0
+    ps = feedstock.ps_pct / 100.0
 
     char_c = (
         c["char_c_base"]
@@ -45,12 +48,15 @@ def semi_empirical_targets(
         - c["char_residence_slope_per_s"] * max(residence_time_s - 1.0, 0.0)
         - c["char_er_slope"] * max(er - 0.25, 0.0)
         + c["char_lignin_slope"] * max(lignin - 0.20, 0.0)
+        - 0.035 * plastics
     )
     tar_c = (
         c["tar_c_base"]
         - c["tar_temp_slope_per_c"] * temp_delta
         - c["tar_er_slope"] * max(er - 0.15, 0.0)
         - c["tar_residence_slope_per_s"] * max(residence_time_s - 1.0, 0.0)
+        + 0.060 * plastics
+        + 0.055 * ps
     )
 
     hot = clamp((temperature_c - 650.0) / 450.0, 0.0, 1.0)
@@ -64,6 +70,10 @@ def semi_empirical_targets(
         "C2H4": 0.035 * (1.0 - 0.70 * hot),
         "C2H6": 0.018 * (1.0 - 0.80 * hot),
     }
+    fractions["CH4"] += 0.10 * plastics + 0.08 * pe_pp
+    fractions["C2H4"] += 0.12 * plastics + 0.12 * pe_pp
+    fractions["C2H6"] += 0.045 * pe_pp
+    fractions["CO"] += 0.035 * feedstock.pet_pct / 100.0
     # Steam mainly changes H/O closure, but a small carbon shift away from
     # methane is included to mimic steam reforming.
     fractions["CO"] += 0.05 * steam

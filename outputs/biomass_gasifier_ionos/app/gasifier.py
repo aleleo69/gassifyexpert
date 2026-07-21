@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from dataclasses import replace
 
+from catalysts import CATALYST_PROFILES, CatalystEffect, apply_catalyst
 from empirical import semi_empirical_targets, stoichiometric_targets
-from energy_balance import cold_gas_efficiency, syngas_lhv_mj_nm3
+from energy_balance import cold_gas_efficiency, energy_performance, syngas_lhv_mj_nm3
 from equilibrium import equilibrium_targets
 from feedstock import Feedstock
 from reactions import (
@@ -18,6 +20,7 @@ from reactions import (
     oxidant_from_er,
     stoichiometric_o2_kmol_h,
 )
+from reactor_types import GASIFIER_TYPE_PROFILES, apply_gasifier_type
 from utils import MOLECULAR_WEIGHTS, NM3_PER_KMOL
 
 
@@ -33,6 +36,16 @@ class GasifierConditions:
     agent: str = "air"
     steam_biomass_ratio: float = 0.0
     model: str = "semi_empirical"
+    thermal_mode: str = "autothermal"
+    external_heat_input_kw: float = 0.0
+    syngas_cooler_outlet_c: float = 40.0
+    heat_exchanger_effectiveness: float = 0.75
+    catalyst_type: str = "none"
+    catalyst_to_biomass_ratio: float = 0.0
+    catalyst_activity: float = 1.0
+    gasifier_type: str = "generic"
+    syngas_cooling_time_s: float = 2.0
+    reduction_zone_severity: float = 0.75
 
     def __post_init__(self) -> None:
         if self.temperature_c <= 0:
@@ -45,6 +58,28 @@ class GasifierConditions:
             raise ValueError("agent must be air, oxygen, steam, or air+steam")
         if self.model not in {"stoichiometric_equilibrium", "semi_empirical", "hybrid"}:
             raise ValueError("model must be stoichiometric_equilibrium, semi_empirical, or hybrid")
+        if self.thermal_mode not in {"autothermal", "allothermal"}:
+            raise ValueError("thermal_mode must be autothermal or allothermal")
+        if self.external_heat_input_kw < 0:
+            raise ValueError("external_heat_input_kw cannot be negative")
+        if self.syngas_cooler_outlet_c < 0:
+            raise ValueError("syngas_cooler_outlet_c cannot be negative")
+        if self.syngas_cooler_outlet_c > self.temperature_c:
+            raise ValueError("syngas_cooler_outlet_c cannot exceed gasification temperature")
+        if not 0.0 <= self.heat_exchanger_effectiveness <= 1.0:
+            raise ValueError("heat_exchanger_effectiveness must be between 0 and 1")
+        if self.catalyst_type not in {"none", *CATALYST_PROFILES}:
+            raise ValueError("Unsupported catalyst_type")
+        if self.catalyst_to_biomass_ratio < 0:
+            raise ValueError("catalyst_to_biomass_ratio cannot be negative")
+        if not 0.0 <= self.catalyst_activity <= 1.0:
+            raise ValueError("catalyst_activity must be between 0 and 1")
+        if self.gasifier_type not in GASIFIER_TYPE_PROFILES:
+            raise ValueError("Unsupported gasifier_type")
+        if self.syngas_cooling_time_s <= 0:
+            raise ValueError("syngas_cooling_time_s must be positive")
+        if not 0.0 <= self.reduction_zone_severity <= 1.0:
+            raise ValueError("reduction_zone_severity must be between 0 and 1")
         if self.er is None and self.o2_flow_kmol_h is None and self.agent != "steam":
             raise ValueError("Either er or o2_flow_kmol_h is required unless agent='steam'")
 
@@ -96,6 +131,26 @@ class Gasifier:
             )
             warnings.extend(eq_warnings)
 
+        targets, reactor_effect = apply_gasifier_type(targets, self.conditions.gasifier_type)
+        if self.conditions.gasifier_type != "generic":
+            warnings.append(
+                "Gasifier-type effects are qualitative screening corrections; geometry, bed hydrodynamics, feed size, moisture tolerance, and heat losses require design-specific calibration."
+            )
+
+        catalyst_effect = CatalystEffect("none", 0.0, 0.0, 0.0, 0.0, 0.0)
+        if self.conditions.catalyst_type != "none":
+            targets, catalyst_effect = apply_catalyst(
+                targets,
+                self.conditions.catalyst_type,
+                self.conditions.catalyst_to_biomass_ratio,
+                self.conditions.catalyst_activity,
+                self.conditions.temperature_c,
+                self.conditions.steam_biomass_ratio,
+            )
+            warnings.append(
+                "Catalyst effects are semi-empirical screening corrections; calibrate loading, activity, deactivation, and selectivity with reactor-specific tests."
+            )
+
         slate = build_balanced_products(
             self.feedstock,
             targets,
@@ -103,6 +158,8 @@ class Gasifier:
             er,
             oxidant,
             steam_kmol_h,
+            self.conditions.syngas_cooling_time_s,
+            self.conditions.reduction_zone_severity,
         )
         warnings.extend(slate.warnings)
 
@@ -111,6 +168,22 @@ class Gasifier:
         dry_kmol = sum(v for k, v in slate.gas_kmol_h.items() if k != "H2O")
         lhv = syngas_lhv_mj_nm3(dry_pct)
         cge = cold_gas_efficiency(self.feedstock, dry_kmol, lhv)
+        external_heat_kw = self.conditions.external_heat_input_kw if self.conditions.thermal_mode == "allothermal" else 0.0
+        energy = energy_performance(
+            self.feedstock,
+            slate.gas_kmol_h,
+            dry_kmol,
+            lhv,
+            self.conditions.temperature_c,
+            self.conditions.syngas_cooler_outlet_c,
+            self.conditions.heat_exchanger_effectiveness,
+            external_heat_kw,
+        )
+        if self.conditions.thermal_mode == "autothermal" and self.conditions.external_heat_input_kw > 0:
+            warnings.append("External heat input is ignored in autothermal mode.")
+        warnings.append(
+            "Syngas heat recovery uses mean ideal-gas Cp values and excludes condensation latent heat; use a detailed heat-exchanger model for design."
+        )
         inlet_atoms = inlet_atoms_kmol_h(self.feedstock, oxidant, steam_kmol_h)
         stoich_air_kmol_h = o2_stoich * (1.0 + 3.76)
         stoich_air_kg_h = o2_stoich * (MOLECULAR_WEIGHTS["O2"] + 3.76 * MOLECULAR_WEIGHTS["N2"])
@@ -119,7 +192,7 @@ class Gasifier:
         hhv_estimated = self.feedstock.estimated_hhv_mj_kg()
         lhv_feed = self.feedstock.estimated_lhv_mj_kg()
 
-        return {
+        result = {
             "input_normalized": self.feedstock.normalized_input(),
             "feedstock_energy": {
                 "hhv_pcs_mj_kg_dry": hhv_estimated,
@@ -137,6 +210,16 @@ class Gasifier:
                 "agent": self.conditions.agent,
                 "model": self.conditions.model,
                 "steam_biomass_ratio": self.conditions.steam_biomass_ratio,
+                "thermal_mode": self.conditions.thermal_mode,
+                "external_heat_input_kw": external_heat_kw,
+                "syngas_cooler_outlet_c": self.conditions.syngas_cooler_outlet_c,
+                "heat_exchanger_effectiveness": self.conditions.heat_exchanger_effectiveness,
+                "catalyst_type": self.conditions.catalyst_type,
+                "catalyst_to_biomass_ratio": self.conditions.catalyst_to_biomass_ratio,
+                "catalyst_activity": self.conditions.catalyst_activity,
+                "gasifier_type": self.conditions.gasifier_type,
+                "syngas_cooling_time_s": self.conditions.syngas_cooling_time_s,
+                "reduction_zone_severity": self.conditions.reduction_zone_severity,
             },
             "oxidant": {
                 "o2_stoich_kmol_h": o2_stoich,
@@ -167,9 +250,38 @@ class Gasifier:
                 "wet_flow_nm3_h": gas_volume_nm3_h(slate.gas_kmol_h, wet=True),
                 "dry_composition_mol_pct": dry_pct,
                 "wet_composition_mol_pct": wet_pct,
+                "dry_species_flows": gas_species_flows(slate.gas_kmol_h, dry_pct, wet=False),
+                "wet_species_flows": gas_species_flows(slate.gas_kmol_h, wet_pct, wet=True),
                 "trace_pollutants": slate.trace_pollutants,
                 "lhv_mj_nm3_dry": lhv,
                 "cold_gas_efficiency_pct": cge,
+            },
+            "energy_balance": {
+                **energy,
+                "thermal_mode": self.conditions.thermal_mode,
+                "syngas_cooler_inlet_c": self.conditions.temperature_c,
+                "syngas_cooler_outlet_c": self.conditions.syngas_cooler_outlet_c,
+                "heat_exchanger_effectiveness": self.conditions.heat_exchanger_effectiveness,
+                "overall_efficiency_definition": "(syngas chemical power + recovered thermal power) / (feedstock chemical power + external thermal input)",
+                "basis": "LHV/PCI; sensible heat only, no condensation latent heat",
+            },
+            "catalyst": {
+                "type": self.conditions.catalyst_type,
+                "catalyst_to_biomass_ratio_kg_kg_dry": self.conditions.catalyst_to_biomass_ratio,
+                "relative_activity_0_1": self.conditions.catalyst_activity,
+                "effective_severity_0_1": catalyst_effect.severity,
+                "modeled_tar_conversion_pct": 100.0 * catalyst_effect.tar_conversion_fraction,
+                "modeled_char_carbon_conversion_pct": 100.0 * catalyst_effect.char_carbon_conversion_fraction,
+                "modeled_methane_reforming_pct": 100.0 * catalyst_effect.methane_reforming_fraction,
+                "modeled_c2_reforming_pct": 100.0 * catalyst_effect.c2_reforming_fraction,
+                "mass_balance_basis": "Catalyst treated as circulating bed inventory; catalyst mass and attrition are excluded.",
+            },
+            "reactor": {
+                "gasifier_type": self.conditions.gasifier_type,
+                "char_target_multiplier": reactor_effect.char_multiplier,
+                "tar_target_multiplier": reactor_effect.tar_multiplier,
+                "gas_species_target_multipliers": reactor_effect.species_multipliers,
+                "basis": "Qualitative correction relative to the generic model; not a reactor design correlation.",
             },
             "char": slate.char_composition,
             "balances": {
@@ -184,3 +296,48 @@ class Gasifier:
             },
             "warnings": sorted(set(warnings)),
         }
+        if self.conditions.catalyst_type != "none":
+            baseline_conditions = replace(
+                self.conditions,
+                catalyst_type="none",
+                catalyst_to_biomass_ratio=0.0,
+                catalyst_activity=0.0,
+            )
+            baseline = Gasifier(self.feedstock, baseline_conditions).simulate()
+            result["catalyst"]["comparison_vs_no_catalyst"] = {
+                "dry_syngas_flow_change_pct": 100.0
+                * (result["gas"]["dry_flow_nm3_h"] / max(baseline["gas"]["dry_flow_nm3_h"], 1e-12) - 1.0),
+                "tar_yield_change_pct": 100.0
+                * (result["yields"]["tar_cnhm_kg_h"] / max(baseline["yields"]["tar_cnhm_kg_h"], 1e-12) - 1.0),
+                "h2_dry_mol_pct_change": result["gas"]["dry_composition_mol_pct"].get("H2", 0.0)
+                - baseline["gas"]["dry_composition_mol_pct"].get("H2", 0.0),
+                "co_dry_mol_pct_change": result["gas"]["dry_composition_mol_pct"].get("CO", 0.0)
+                - baseline["gas"]["dry_composition_mol_pct"].get("CO", 0.0),
+                "ch4_dry_mol_pct_change": result["gas"]["dry_composition_mol_pct"].get("CH4", 0.0)
+                - baseline["gas"]["dry_composition_mol_pct"].get("CH4", 0.0),
+                "cge_percentage_point_change": result["gas"]["cold_gas_efficiency_pct"]
+                - baseline["gas"]["cold_gas_efficiency_pct"],
+                "overall_efficiency_percentage_point_change": result["energy_balance"]["overall_efficiency_pct"]
+                - baseline["energy_balance"]["overall_efficiency_pct"],
+            }
+        return result
+
+
+def gas_species_flows(
+    gas_kmol_h: dict[str, float],
+    mol_pct: dict[str, float],
+    wet: bool,
+) -> dict[str, dict[str, float]]:
+    """Return per-species composition and flow rates for UI/API tables."""
+    excluded = set() if wet else {"H2O"}
+    rows: dict[str, dict[str, float]] = {}
+    for species, kmol_h in gas_kmol_h.items():
+        if species in excluded:
+            continue
+        rows[species] = {
+            "mol_pct": mol_pct.get(species, 0.0),
+            "kmol_h": kmol_h,
+            "nm3_h": kmol_h * NM3_PER_KMOL,
+            "kg_h": kmol_h * MOLECULAR_WEIGHTS[species],
+        }
+    return rows

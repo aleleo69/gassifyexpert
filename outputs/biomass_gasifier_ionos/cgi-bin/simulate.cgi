@@ -16,6 +16,7 @@ sys.path.insert(0, APP_DIR)
 
 from feedstock import Feedstock  # noqa: E402
 from gasifier import Gasifier, GasifierConditions  # noqa: E402
+from tracker import record_request  # noqa: E402
 from utils import flatten_dict  # noqa: E402
 
 
@@ -34,6 +35,12 @@ DEFAULT_INPUT = {
     "hemicellulose_pct": 25.0,
     "lignin_pct": 25.0,
     "extractives_pct": 10.0,
+    "plastics_pct": 0.0,
+    "pe_pp_pct": 0.0,
+    "ps_pct": 0.0,
+    "pet_pct": 0.0,
+    "pvc_pct": 0.0,
+    "other_organics_pct": 0.0,
     "lhv_mj_kg": None,
     "hhv_mj_kg": None,
     "temperature_c": 850.0,
@@ -44,6 +51,16 @@ DEFAULT_INPUT = {
     "agent": "air",
     "steam_biomass_ratio": 0.0,
     "model": "semi_empirical",
+    "thermal_mode": "autothermal",
+    "external_heat_input_kw": 0.0,
+    "syngas_cooler_outlet_c": 40.0,
+    "heat_exchanger_effectiveness": 0.75,
+    "catalyst_type": "none",
+    "catalyst_to_biomass_ratio": 0.0,
+    "catalyst_activity": 1.0,
+    "gasifier_type": "generic",
+    "syngas_cooling_time_s": 2.0,
+    "reduction_zone_severity": 0.75,
 }
 
 
@@ -89,6 +106,12 @@ def simulate_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
         hemicellulose_pct=float(data["hemicellulose_pct"]),
         lignin_pct=float(data["lignin_pct"]),
         extractives_pct=float(data["extractives_pct"]),
+        plastics_pct=float(data["plastics_pct"]),
+        pe_pp_pct=float(data["pe_pp_pct"]),
+        ps_pct=float(data["ps_pct"]),
+        pet_pct=float(data["pet_pct"]),
+        pvc_pct=float(data["pvc_pct"]),
+        other_organics_pct=float(data["other_organics_pct"]),
         lhv_mj_kg=optional_float(data["lhv_mj_kg"]),
         hhv_mj_kg=optional_float(data["hhv_mj_kg"]),
     )
@@ -101,6 +124,16 @@ def simulate_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
         agent=str(data["agent"]),
         steam_biomass_ratio=float(data["steam_biomass_ratio"]),
         model=str(data["model"]),
+        thermal_mode=str(data["thermal_mode"]),
+        external_heat_input_kw=float(data["external_heat_input_kw"]),
+        syngas_cooler_outlet_c=float(data["syngas_cooler_outlet_c"]),
+        heat_exchanger_effectiveness=float(data["heat_exchanger_effectiveness"]),
+        catalyst_type=str(data["catalyst_type"]),
+        catalyst_to_biomass_ratio=float(data["catalyst_to_biomass_ratio"]),
+        catalyst_activity=float(data["catalyst_activity"]),
+        gasifier_type=str(data["gasifier_type"]),
+        syngas_cooling_time_s=float(data["syngas_cooling_time_s"]),
+        reduction_zone_severity=float(data["reduction_zone_severity"]),
     )
     return Gasifier(feedstock, conditions).simulate()
 
@@ -120,17 +153,29 @@ def respond(status: str, payload: dict[str, Any]) -> None:
 
 def main() -> None:
     """CGI entry point."""
+    status = "200 OK"
     try:
         result = simulate_from_payload(read_payload())
-        respond("200 OK", {"result": result, "csv": result_to_csv(result)})
+        payload = {"result": result, "csv": result_to_csv(result)}
     except Exception as exc:
-        respond(
-            "400 Bad Request",
-            {
-                "error": str(exc),
-                "trace": traceback.format_exc(limit=4),
-            },
+        status = "400 Bad Request"
+        payload = {
+            "error": str(exc),
+            "trace": traceback.format_exc(limit=4),
+        }
+    try:
+        log_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "logs"))
+        request_count = record_request(
+            log_dir=log_dir,
+            remote_ip=os.environ.get("REMOTE_ADDR", "unknown"),
+            user_agent=os.environ.get("HTTP_USER_AGENT", ""),
+            endpoint=os.environ.get("REQUEST_URI", "/cgi-bin/simulate.cgi"),
+            status=status,
         )
+        payload["tracking"] = {"request_count": request_count}
+    except Exception as log_exc:
+        payload["tracking"] = {"warning": f"Request log unavailable: {log_exc}"}
+    respond(status, payload)
 
 
 if __name__ == "__main__":

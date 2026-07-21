@@ -45,6 +45,7 @@ class GasifierConditions:
     catalyst_activity: float = 1.0
     gasifier_type: str = "generic"
     syngas_cooling_time_s: float = 2.0
+    reduction_zone_severity: float = 0.75
 
     def __post_init__(self) -> None:
         if self.temperature_c <= 0:
@@ -77,6 +78,8 @@ class GasifierConditions:
             raise ValueError("Unsupported gasifier_type")
         if self.syngas_cooling_time_s <= 0:
             raise ValueError("syngas_cooling_time_s must be positive")
+        if not 0.0 <= self.reduction_zone_severity <= 1.0:
+            raise ValueError("reduction_zone_severity must be between 0 and 1")
         if self.er is None and self.o2_flow_kmol_h is None and self.agent != "steam":
             raise ValueError("Either er or o2_flow_kmol_h is required unless agent='steam'")
 
@@ -156,6 +159,7 @@ class Gasifier:
             oxidant,
             steam_kmol_h,
             self.conditions.syngas_cooling_time_s,
+            self.conditions.reduction_zone_severity,
         )
         warnings.extend(slate.warnings)
 
@@ -215,6 +219,7 @@ class Gasifier:
                 "catalyst_activity": self.conditions.catalyst_activity,
                 "gasifier_type": self.conditions.gasifier_type,
                 "syngas_cooling_time_s": self.conditions.syngas_cooling_time_s,
+                "reduction_zone_severity": self.conditions.reduction_zone_severity,
             },
             "oxidant": {
                 "o2_stoich_kmol_h": o2_stoich,
@@ -245,6 +250,8 @@ class Gasifier:
                 "wet_flow_nm3_h": gas_volume_nm3_h(slate.gas_kmol_h, wet=True),
                 "dry_composition_mol_pct": dry_pct,
                 "wet_composition_mol_pct": wet_pct,
+                "dry_species_flows": gas_species_flows(slate.gas_kmol_h, dry_pct, wet=False),
+                "wet_species_flows": gas_species_flows(slate.gas_kmol_h, wet_pct, wet=True),
                 "trace_pollutants": slate.trace_pollutants,
                 "lhv_mj_nm3_dry": lhv,
                 "cold_gas_efficiency_pct": cge,
@@ -314,3 +321,23 @@ class Gasifier:
                 - baseline["energy_balance"]["overall_efficiency_pct"],
             }
         return result
+
+
+def gas_species_flows(
+    gas_kmol_h: dict[str, float],
+    mol_pct: dict[str, float],
+    wet: bool,
+) -> dict[str, dict[str, float]]:
+    """Return per-species composition and flow rates for UI/API tables."""
+    excluded = set() if wet else {"H2O"}
+    rows: dict[str, dict[str, float]] = {}
+    for species, kmol_h in gas_kmol_h.items():
+        if species in excluded:
+            continue
+        rows[species] = {
+            "mol_pct": mol_pct.get(species, 0.0),
+            "kmol_h": kmol_h,
+            "nm3_h": kmol_h * NM3_PER_KMOL,
+            "kg_h": kmol_h * MOLECULAR_WEIGHTS[species],
+        }
+    return rows

@@ -57,6 +57,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="generic",
     )
     parser.add_argument("--syngas-cooling-time", type=float, default=2.0, help="Residence time through syngas cooling train [s]")
+    parser.add_argument("--reduction-zone-severity", type=float, default=0.75, help="Reducing-zone conversion severity for NOx/NH3/HCN screening [0-1]")
     parser.add_argument("--json-out", type=Path, default=None)
     parser.add_argument("--csv-out", type=Path, default=None)
     return parser
@@ -106,6 +107,7 @@ def run_from_args(args: argparse.Namespace) -> dict:
         catalyst_activity=args.catalyst_activity,
         gasifier_type=args.gasifier_type,
         syngas_cooling_time_s=args.syngas_cooling_time,
+        reduction_zone_severity=args.reduction_zone_severity,
     )
     result = Gasifier(feedstock, conditions).simulate()
     if args.json_out:

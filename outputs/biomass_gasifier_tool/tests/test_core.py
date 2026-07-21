@@ -95,6 +95,16 @@ class CoreModelTests(unittest.TestCase):
         self.assertGreater(high["gas"]["dry_composition_mol_pct"]["CO2"], low["gas"]["dry_composition_mol_pct"]["CO2"])
         self.assertGreater(high["oxidant"]["n2_in_kmol_h"], low["oxidant"]["n2_in_kmol_h"])
 
+    def test_gas_species_flow_table_reports_volume_and_mass(self) -> None:
+        """Gas tables expose mol percent, normal volume, and mass per species."""
+        result = run_case()
+        co = result["gas"]["dry_species_flows"]["CO"]
+        co_kmol = result["gas"]["species_kmol_h"]["CO"]
+        self.assertTrue(math.isclose(co["nm3_h"], co_kmol * 22.414, rel_tol=1e-12))
+        self.assertTrue(math.isclose(co["kg_h"], co_kmol * MOLECULAR_WEIGHTS["CO"], rel_tol=1e-12))
+        self.assertNotIn("H2O", result["gas"]["dry_species_flows"])
+        self.assertIn("H2O", result["gas"]["wet_species_flows"])
+
     def test_hhv_channiwala_parikh_correlation(self) -> None:
         """HHV/PCS fallback follows the Channiwala-Parikh ultimate correlation."""
         feed = sample_feedstock()
@@ -234,6 +244,24 @@ class CoreModelTests(unittest.TestCase):
             high_trace["in_reactor_pcdd_f_survival_index_0_1"],
             low_trace["in_reactor_pcdd_f_survival_index_0_1"],
         )
+
+    def test_reduction_zone_lowers_nitrogen_trace_species(self) -> None:
+        """Reducing-zone severity suppresses NOx and NH3/HCN trace estimates."""
+        common = dict(temperature_c=850.0, residence_time_s=2.0, er=0.35, agent="air")
+        weak = Gasifier(
+            sample_feedstock(),
+            GasifierConditions(**common, reduction_zone_severity=0.0),
+        ).simulate()
+        strong = Gasifier(
+            sample_feedstock(),
+            GasifierConditions(**common, reduction_zone_severity=0.90),
+        ).simulate()
+        weak_species = weak["gas"]["species_kmol_h"]
+        strong_species = strong["gas"]["species_kmol_h"]
+        self.assertLess(strong_species.get("NO", 0.0), weak_species.get("NO", 0.0))
+        self.assertLess(strong_species.get("NO2", 0.0), weak_species.get("NO2", 0.0))
+        self.assertLess(strong_species.get("NH3", 0.0), weak_species.get("NH3", 0.0))
+        self.assertLess(strong_species.get("HCN", 0.0), weak_species.get("HCN", 0.0))
 
     def test_request_tracker_counts_and_logs_ip(self) -> None:
         """Tracker persists counts and appends structured access events."""

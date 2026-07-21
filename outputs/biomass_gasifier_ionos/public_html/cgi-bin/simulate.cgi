@@ -60,6 +60,7 @@ DEFAULT_INPUT = {
     "catalyst_activity": 1.0,
     "gasifier_type": "generic",
     "syngas_cooling_time_s": 2.0,
+    "reduction_zone_severity": 0.75,
 }
 
 
@@ -132,6 +133,7 @@ def simulate_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
         catalyst_activity=float(data["catalyst_activity"]),
         gasifier_type=str(data["gasifier_type"]),
         syngas_cooling_time_s=float(data["syngas_cooling_time_s"]),
+        reduction_zone_severity=float(data["reduction_zone_severity"]),
     )
     return Gasifier(feedstock, conditions).simulate()
 

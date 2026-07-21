@@ -61,6 +61,7 @@ DEFAULT_INPUT = {
     "catalyst_activity": 1.0,
     "gasifier_type": "generic",
     "syngas_cooling_time_s": 2.0,
+    "reduction_zone_severity": 0.75,
 }
 
 LAST_RESULT: dict[str, Any] | None = None
@@ -119,6 +120,7 @@ def simulate_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
         catalyst_activity=float(data["catalyst_activity"]),
         gasifier_type=str(data["gasifier_type"]),
         syngas_cooling_time_s=float(data["syngas_cooling_time_s"]),
+        reduction_zone_severity=float(data["reduction_zone_severity"]),
     )
     return Gasifier(feedstock, conditions).simulate()
 
@@ -276,6 +278,28 @@ HTML = r"""<!doctype html>
       color: #fff;
       border-color: var(--accent);
     }
+    .segmented {
+      display: inline-flex;
+      gap: 2px;
+      padding: 2px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      background: #f8fafc;
+    }
+    .segmented button {
+      height: 26px;
+      border: 0;
+      border-radius: 4px;
+      padding: 0 9px;
+      background: transparent;
+      color: #475467;
+      font-size: 12px;
+    }
+    .segmented button.active {
+      background: #ffffff;
+      color: #0f766e;
+      box-shadow: 0 1px 2px rgba(16, 24, 40, .12);
+    }
     button:disabled, .button.disabled {
       opacity: .55;
       cursor: wait;
@@ -430,6 +454,7 @@ HTML = r"""<!doctype html>
           <label>Potenza termica esterna [kW]<input name="external_heat_input_kw" type="number" min="0" step="any" value="0"></label>
           <label>Syngas dopo recupero [C]<input name="syngas_cooler_outlet_c" type="number" min="0" step="any" value="40"></label>
           <label>Tempo raffreddamento syngas [s]<input name="syngas_cooling_time_s" type="number" min="0.01" step="any" value="2"></label>
+          <label>Severità zona riducente [0-1]<input name="reduction_zone_severity" type="number" min="0" max="1" step="0.05" value="0.75"></label>
           <label>Efficienza scambiatore [0-1]<input name="heat_exchanger_effectiveness" type="number" min="0" max="1" step="0.01" value="0.75"></label>
           <label>Catalizzatore<select name="catalyst_type"><option value="none">nessuno</option><option value="olivine">olivina</option><option value="calcined_olivine">olivina calcinata</option><option value="limestone">calcare</option><option value="dolomite">dolomite</option><option value="nickel_based">base nichel</option></select></label>
           <label>Catalizzatore/biomassa [kg/kg]<input name="catalyst_to_biomass_ratio" type="number" min="0" step="0.01" value="0"></label>
@@ -448,16 +473,16 @@ HTML = r"""<!doctype html>
         <div class="kpi"><small>Char</small><strong id="charYield">-</strong></div>
         <div class="kpi"><small>CGE / Overall</small><strong id="cge">-</strong></div>
       </div>
-      <div class="tables">
-        <section>
-          <div class="section-title">Gas secco [% mol]</div>
-          <div class="panel-body"><table id="dryTable"></table></div>
-        </section>
-        <section>
-          <div class="section-title">Gas umido [% mol]</div>
-          <div class="panel-body"><table id="wetTable"></table></div>
-        </section>
-      </div>
+      <section>
+        <div class="section-title">
+          <span id="gasTableTitle">Gas secco</span>
+          <span class="segmented" aria-label="Base gas">
+            <button id="gasDryToggle" class="active" type="button">Secco</button>
+            <button id="gasWetToggle" type="button">Umido</button>
+          </span>
+        </div>
+        <div class="panel-body"><table id="gasTable"></table></div>
+      </section>
       <div class="tables">
         <section>
           <div class="section-title">Rese e portate</div>
@@ -509,6 +534,7 @@ HTML = r"""<!doctype html>
     let latestCsv = '';
     let jsonUrl = '';
     let csvUrl = '';
+    let gasBasis = 'dry';
 
     function val(name) {
       const el = form.elements[name];
@@ -580,7 +606,8 @@ HTML = r"""<!doctype html>
         catalyst_to_biomass_ratio: val('catalyst_to_biomass_ratio'),
         catalyst_activity: val('catalyst_activity'),
         gasifier_type: val('gasifier_type'),
-        syngas_cooling_time_s: val('syngas_cooling_time_s')
+        syngas_cooling_time_s: val('syngas_cooling_time_s'),
+        reduction_zone_severity: val('reduction_zone_severity')
       };
     }
 
@@ -605,14 +632,36 @@ HTML = r"""<!doctype html>
       }</tbody>`;
     }
 
+    function renderGasTable(result) {
+      const isWet = gasBasis === 'wet';
+      const data = isWet ? result.gas.wet_species_flows : result.gas.dry_species_flows;
+      const rows = Object.entries(data || {})
+        .sort((a, b) => (b[1].mol_pct || 0) - (a[1].mol_pct || 0))
+        .map(([species, values]) => `
+          <tr>
+            <td>${species}</td>
+            <td>${fmt(values.mol_pct)}</td>
+            <td>${fmt(values.nm3_h)}</td>
+            <td>${fmt(values.kg_h)}</td>
+            <td>${fmt(values.kmol_h)}</td>
+          </tr>
+        `).join('');
+      document.getElementById('gasTableTitle').textContent = isWet ? 'Gas umido' : 'Gas secco';
+      document.getElementById('gasDryToggle').classList.toggle('active', !isWet);
+      document.getElementById('gasWetToggle').classList.toggle('active', isWet);
+      document.getElementById('gasTable').innerHTML = `
+        <thead><tr><th>Specie</th><th>% mol</th><th>Nm3/h</th><th>kg/h</th><th>kmol/h</th></tr></thead>
+        <tbody>${rows}</tbody>
+      `;
+    }
+
     function render(result) {
       latestResult = result;
       document.getElementById('dryFlow').textContent = `${fmt(result.gas.dry_flow_nm3_h, 1)} Nm3/h`;
       document.getElementById('lhv').textContent = `${fmt(result.gas.lhv_mj_nm3_dry, 2)} MJ/Nm3`;
       document.getElementById('charYield').textContent = `${fmt(result.yields.char_kg_h, 2)} kg/h`;
       document.getElementById('cge').textContent = `${fmt(result.gas.cold_gas_efficiency_pct, 1)} / ${fmt(result.energy_balance.overall_efficiency_pct, 1)} %`;
-      tableFromObject('dryTable', result.gas.dry_composition_mol_pct, '% mol');
-      tableFromObject('wetTable', result.gas.wet_composition_mol_pct, '% mol');
+      renderGasTable(result);
       tableFromRows('yieldTable', [
         ['Char', fmt(result.yields.char_kg_h), 'kg/h'],
         ['Resa char', fmt(result.yields.char_pct_dry_feed), '% massa secca'],
@@ -683,6 +732,9 @@ HTML = r"""<!doctype html>
       tableFromRows('traceTable', [
         ['PCDD/F rischio', trace.dioxins_furans_risk || '-', 'classe'],
         ['PCDD/F index', fmt(trace.dioxins_furans_index_0_1), '0-1'],
+        ['Severità zona riducente', fmt(trace.main_drivers?.reduction_zone_severity), '0-1'],
+        ['Fattore residuo NOx/N2O', fmt(trace.main_drivers?.nox_reduction_factor), '-'],
+        ['Fattore residuo NH3/HCN', fmt(trace.main_drivers?.nh3_hcn_reduction_factor), '-'],
         ['PCDD/F TEQ', (trace.pcdd_f_teq_ng_i_teq_nm3_screening_range || []).map(v => fmt(v, 4)).join(' - '), 'ng I-TEQ/Nm3'],
         ['PCDD/F totale', (trace.total_pcdd_f_ng_nm3_screening_range || []).map(v => fmt(v, 4)).join(' - '), 'ng/Nm3'],
         ['Sopravvivenza PCDD/F nel reattore', fmt(trace.temperature_sensitivity?.in_reactor_pcdd_f_survival_index_0_1), '0-1'],
@@ -698,6 +750,15 @@ HTML = r"""<!doctype html>
       statusEl.textContent = 'OK';
       statusEl.className = 'status ok';
     }
+
+    document.getElementById('gasDryToggle').addEventListener('click', () => {
+      gasBasis = 'dry';
+      if (latestResult) renderGasTable(latestResult);
+    });
+    document.getElementById('gasWetToggle').addEventListener('click', () => {
+      gasBasis = 'wet';
+      if (latestResult) renderGasTable(latestResult);
+    });
 
     function refreshDownloads() {
       if (!latestResult) return;

@@ -29,6 +29,7 @@ def estimate_pollutants(
     plastics_pct: float = 0.0,
     ps_pct: float = 0.0,
     pvc_pct: float = 0.0,
+    reduction_zone_severity: float = 0.75,
 ) -> PollutantSplit:
     """Estimate minor species with deliberately coarse partition factors.
 
@@ -37,7 +38,7 @@ def estimate_pollutants(
     for permitting, compliance, or detailed design.
     """
     warnings = [
-        "Minor nitrogen/sulfur/chlorine species are screening estimates, not validated emission predictions."
+        "Minor nitrogen/sulfur/chlorine species are screening estimates after a lumped reducing-zone correction, not validated emission predictions."
     ]
     n = feed_atoms_kmol_h.get("N", 0.0)
     s = feed_atoms_kmol_h.get("S", 0.0)
@@ -57,6 +58,19 @@ def estimate_pollutants(
     no_frac = clamp(0.025 * oxidizing * hot, 0.0, 0.05)
     no2_frac = clamp(0.006 * oxidizing * hot, 0.0, 0.015)
     n2o_frac = clamp(0.004 * oxidizing * (1.0 - hot), 0.0, 0.01)
+
+    # Gasifiers have reducing zones where char, CO, H2, and residence time tend
+    # to convert nitrogen oxides and part of NH3/HCN toward N2. This is still a
+    # screening closure: real conversion depends on hydrodynamics, tar/char
+    # contact, catalysts, temperature history, and downstream air ingress.
+    reduction = clamp(reduction_zone_severity, 0.0, 1.0)
+    nox_reduction_factor = 1.0 - 0.95 * reduction
+    precursor_reduction_factor = 1.0 - 0.55 * reduction
+    nh3_frac *= precursor_reduction_factor
+    hcn_frac *= precursor_reduction_factor
+    no_frac *= nox_reduction_factor
+    no2_frac *= nox_reduction_factor
+    n2o_frac *= nox_reduction_factor
 
     species = {
         "H2S": s * h2s_frac,
@@ -131,6 +145,9 @@ def estimate_pollutants(
             "cooling_window_200_450_c": cooling_window_200_450_c,
             "cooling_residence_time_s": cooling_residence_time_s,
             "plastic_precursor_factor": plastic_precursor_factor,
+            "reduction_zone_severity": reduction,
+            "nox_reduction_factor": nox_reduction_factor,
+            "nh3_hcn_reduction_factor": precursor_reduction_factor,
         },
         "temperature_sensitivity": {
             "in_reactor_pcdd_f_survival_index_0_1": in_reactor_survival,

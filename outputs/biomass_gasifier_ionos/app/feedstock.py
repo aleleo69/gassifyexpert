@@ -8,6 +8,7 @@ from utils import ATOMIC_WEIGHTS, percent_to_fraction
 
 
 ELEMENTS = ("C", "H", "O", "N", "S", "Cl")
+COMPOSITION_TOLERANCE_PCT = 0.5
 
 
 @dataclass(slots=True)
@@ -33,6 +34,12 @@ class Feedstock:
     hemicellulose_pct: float = 0.0
     lignin_pct: float = 0.0
     extractives_pct: float = 0.0
+    plastics_pct: float = 0.0
+    pe_pp_pct: float = 0.0
+    ps_pct: float = 0.0
+    pet_pct: float = 0.0
+    pvc_pct: float = 0.0
+    other_organics_pct: float = 0.0
     lhv_mj_kg: float | None = None
     hhv_mj_kg: float | None = None
     warnings: list[str] = field(default_factory=list, init=False)
@@ -55,19 +62,44 @@ class Feedstock:
             "hemicellulose_pct",
             "lignin_pct",
             "extractives_pct",
+            "plastics_pct",
+            "pe_pp_pct",
+            "ps_pct",
+            "pet_pct",
+            "pvc_pct",
+            "other_organics_pct",
         ):
             value = getattr(self, name)
             if value < 0:
                 raise ValueError(f"{name} cannot be negative")
         dry_sum = self.C_pct + self.H_pct + self.O_pct + self.N_pct + self.S_pct + self.Cl_pct + self.ash_pct
-        if abs(dry_sum - 100.0) > 5.0:
-            self.warnings.append(
-                f"Dry elemental + ash composition sums to {dry_sum:.2f}%, not 100%; results are normalized by given masses."
+        if abs(dry_sum - 100.0) > COMPOSITION_TOLERANCE_PCT:
+            raise ValueError(
+                f"Dry elemental composition C+H+O+N+S+Cl+ash must sum to 100% "
+                f"(current sum {dry_sum:.2f}%, tolerance +/-{COMPOSITION_TOLERANCE_PCT:.1f}%)."
             )
-        structural_sum = self.cellulose_pct + self.hemicellulose_pct + self.lignin_pct + self.extractives_pct
-        if structural_sum and abs(structural_sum - 100.0) > 5.0:
+        structural_sum = (
+            self.cellulose_pct
+            + self.hemicellulose_pct
+            + self.lignin_pct
+            + self.extractives_pct
+            + self.plastics_pct
+            + self.other_organics_pct
+        )
+        if abs(structural_sum - 100.0) > COMPOSITION_TOLERANCE_PCT:
+            raise ValueError(
+                f"Structural composition cellulose+hemicellulose+lignin+extractives+plastics+other organics "
+                f"must sum to 100% (current sum {structural_sum:.2f}%, "
+                f"tolerance +/-{COMPOSITION_TOLERANCE_PCT:.1f}%)."
+            )
+        plastic_subtypes = self.pe_pp_pct + self.ps_pct + self.pet_pct + self.pvc_pct
+        if plastic_subtypes > self.plastics_pct + 1e-9:
+            raise ValueError(
+                f"Plastic subtypes sum to {plastic_subtypes:.2f}%, above total plastics {self.plastics_pct:.2f}%."
+            )
+        if self.pvc_pct > 0 and self.Cl_pct <= 0:
             self.warnings.append(
-                f"Structural fractions sum to {structural_sum:.2f}%; only qualitative empirical adjustments use them."
+                "PVC is present but elemental chlorine is zero; enter measured Cl because elemental analysis controls HCl and PCDD/F screening."
             )
 
     @property
@@ -182,10 +214,25 @@ class Feedstock:
             "S_pct_dry": self.S_pct,
             "Cl_pct_dry": self.Cl_pct,
             "ash_pct_dry": self.ash_pct,
+            "elemental_ash_sum_pct_dry": self.C_pct + self.H_pct + self.O_pct + self.N_pct + self.S_pct + self.Cl_pct + self.ash_pct,
             "cellulose_pct_dry": self.cellulose_pct,
             "hemicellulose_pct_dry": self.hemicellulose_pct,
             "lignin_pct_dry": self.lignin_pct,
             "extractives_pct_dry": self.extractives_pct,
+            "plastics_pct_dry": self.plastics_pct,
+            "pe_pp_pct_dry": self.pe_pp_pct,
+            "ps_pct_dry": self.ps_pct,
+            "pet_pct_dry": self.pet_pct,
+            "pvc_pct_dry": self.pvc_pct,
+            "other_organics_pct_dry": self.other_organics_pct,
+            "structural_sum_pct_dry": (
+                self.cellulose_pct
+                + self.hemicellulose_pct
+                + self.lignin_pct
+                + self.extractives_pct
+                + self.plastics_pct
+                + self.other_organics_pct
+            ),
             "lhv_mj_kg_dry": self.lhv_mj_kg,
             "hhv_mj_kg_dry": self.hhv_mj_kg,
         }

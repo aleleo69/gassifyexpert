@@ -79,6 +79,7 @@ def build_balanced_products(
     oxidant: dict[str, float],
     steam_kmol_h: float = 0.0,
     cooling_residence_time_s: float = 2.0,
+    reduction_zone_severity: float = 0.75,
 ) -> ProductSlate:
     """Build a product slate that closes C/H/O/N/S/Cl atom balances.
 
@@ -112,6 +113,7 @@ def build_balanced_products(
         plastics_pct=feedstock.plastics_pct,
         ps_pct=feedstock.ps_pct,
         pvc_pct=feedstock.pvc_pct,
+        reduction_zone_severity=reduction_zone_severity,
     )
     gas = {name: 0.0 for name in MOLECULAR_WEIGHTS}
     gas.update(pollutants.species_kmol_h)
